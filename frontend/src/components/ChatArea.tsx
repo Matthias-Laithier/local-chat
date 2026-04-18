@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { streamMessage } from '../api/conversations'
 import type { Conversation, Message } from '../types'
+import MarkdownMessage from './MarkdownMessage'
 import ThinkingPanel from './ThinkingPanel'
 
 interface ChatAreaProps {
@@ -195,8 +196,8 @@ export default function ChatArea({
             <div key={msg.id} className="flex justify-start">
               <div className="max-w-[75%] flex flex-col">
                 {msg.thinking && <ThinkingPanel thinking={msg.thinking} />}
-                <div className="rounded-2xl rounded-bl-sm bg-purple-800/70 border border-purple-600/30 px-4 py-2.5 text-purple-100 text-sm shadow-md shadow-purple-950/40 whitespace-pre-wrap break-words">
-                  {msg.content}
+                <div className="rounded-2xl rounded-bl-sm bg-purple-800/70 border border-purple-600/30 px-4 py-2.5 text-purple-100 text-sm shadow-md shadow-purple-950/40 break-words">
+                  <MarkdownMessage>{msg.content}</MarkdownMessage>
                 </div>
               </div>
             </div>
@@ -214,8 +215,8 @@ export default function ChatArea({
                 />
               )}
               {!streamingContentEmpty && (
-                <div className="rounded-2xl rounded-bl-sm bg-purple-800/70 border border-purple-600/30 px-4 py-2.5 text-purple-100 text-sm shadow-md shadow-purple-950/40 whitespace-pre-wrap break-words">
-                  {streamingReply}
+                <div className="rounded-2xl rounded-bl-sm bg-purple-800/70 border border-purple-600/30 px-4 py-2.5 text-purple-100 text-sm shadow-md shadow-purple-950/40 break-words">
+                  <MarkdownMessage>{streamingReply ?? ''}</MarkdownMessage>
                   <span className="inline-block w-1.5 h-4 align-[-2px] ml-0.5 bg-purple-300 animate-pulse" />
                 </div>
               )}
