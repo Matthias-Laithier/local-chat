@@ -78,10 +78,15 @@ def send_message(
             yield _event({"type": "title", "title": new_title})
 
         full_text = ""
+        full_thinking = ""
         try:
-            for delta in stream_reply(history, request.message):
-                full_text += delta
-                yield _event({"type": "delta", "content": delta})
+            for chunk in stream_reply(history, request.message):
+                if chunk.thinking:
+                    full_thinking += chunk.thinking
+                    yield _event({"type": "thinking_delta", "content": chunk.thinking})
+                if chunk.content:
+                    full_text += chunk.content
+                    yield _event({"type": "delta", "content": chunk.content})
         except Exception as exc:
             yield _event({"type": "error", "detail": f"LLM backend error: {exc}"})
             return
@@ -90,6 +95,7 @@ def send_message(
             conversation_id=conversation_id,
             role="assistant",
             content=full_text,
+            thinking=full_thinking or None,
         )
         db.add(assistant_msg)
         db.commit()

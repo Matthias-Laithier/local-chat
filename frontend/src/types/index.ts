@@ -10,5 +10,6 @@ export interface Message {
   conversation_id: string
   role: 'user' | 'assistant'
   content: string
+  thinking?: string | null
   created_at: string
 }

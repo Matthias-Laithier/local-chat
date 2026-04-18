@@ -12,10 +12,10 @@ A minimal fullstack chat app — FastAPI + React + PostgreSQL — that talks to 
 ## One-time model pull
 
 ```bash
-ollama pull ministral-3:14b
+ollama pull gemma4:e4b
 ```
 
-Ollama must be running on the host. Requires Ollama >= 0.13.1.
+Ollama must be running on the host.
 
 ## Setup
 
@@ -54,7 +54,7 @@ All variables are defined in `backend/.env.example`.
 | `CORS_ORIGINS`    | JSON list of allowed frontend origins         | `["http://localhost:5173"]`                                |
 | `DATABASE_URL`    | PostgreSQL SQLAlchemy URL                     | `postgresql+psycopg://localchat:localchat@localhost:5432/localchat` |
 | `OLLAMA_BASE_URL` | URL of the running Ollama instance            | `http://localhost:11434`                                   |
-| `OLLAMA_MODEL`    | Ollama model tag used to generate replies     | `ministral-3:14b`                                          |
+| `OLLAMA_MODEL`    | Ollama model tag used to generate replies     | `gemma4:e4b`                                               |
 
 ## API
 

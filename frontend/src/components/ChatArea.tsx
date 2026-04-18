@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { streamMessage } from '../api/conversations'
 import type { Conversation, Message } from '../types'
+import ThinkingPanel from './ThinkingPanel'
 
 interface ChatAreaProps {
   conversation: Conversation | null
@@ -18,6 +19,7 @@ export default function ChatArea({
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [streamingReply, setStreamingReply] = useState<string | null>(null)
+  const [streamingThinking, setStreamingThinking] = useState<string>('')
   const [error, setError] = useState<string | null>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
 
@@ -26,11 +28,12 @@ export default function ChatArea({
     setError(null)
     setLoading(false)
     setStreamingReply(null)
+    setStreamingThinking('')
   }, [conversation?.id])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages, streamingReply, loading])
+  }, [messages, streamingReply, streamingThinking, loading])
 
   async function handleSend() {
     if (!conversation || !input.trim() || loading) return
@@ -39,6 +42,7 @@ export default function ChatArea({
     setError(null)
     setLoading(true)
     setStreamingReply('')
+    setStreamingThinking('')
 
     const optimisticUserMsg: Message = {
       id: `optimistic-${Date.now()}`,
@@ -49,7 +53,8 @@ export default function ChatArea({
     }
     onMessagesChange((prev) => [...prev, optimisticUserMsg])
 
-    let accumulated = ''
+    let accumulatedContent = ''
+    let accumulatedThinking = ''
     try {
       await streamMessage(conversation.id, text, (event) => {
         switch (event.type) {
@@ -61,23 +66,30 @@ export default function ChatArea({
           case 'title':
             onConversationTitleChange(conversation.id, event.title)
             break
+          case 'thinking_delta':
+            accumulatedThinking += event.content
+            setStreamingThinking(accumulatedThinking)
+            break
           case 'delta':
-            accumulated += event.content
-            setStreamingReply(accumulated)
+            accumulatedContent += event.content
+            setStreamingReply(accumulatedContent)
             break
           case 'assistant_message':
             onMessagesChange((prev) => [...prev, event.message])
             setStreamingReply(null)
+            setStreamingThinking('')
             break
           case 'error':
             setError(event.detail)
             setStreamingReply(null)
+            setStreamingThinking('')
             break
         }
       })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error')
       setStreamingReply(null)
+      setStreamingThinking('')
     } finally {
       setLoading(false)
     }
@@ -98,6 +110,9 @@ export default function ChatArea({
     )
   }
 
+  const isStreaming = streamingReply != null
+  const streamingContentEmpty = streamingReply === ''
+
   return (
     <div className="flex-1 flex flex-col min-w-0">
       {/* Header */}
@@ -108,7 +123,7 @@ export default function ChatArea({
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
-        {messages.length === 0 && streamingReply == null && !loading && (
+        {messages.length === 0 && !isStreaming && !loading && (
           <p className="text-center text-purple-600 text-sm mt-8 select-none">
             Send a message to get started
           </p>
@@ -126,27 +141,40 @@ export default function ChatArea({
           }
           return (
             <div key={msg.id} className="flex justify-start">
-              <div className="max-w-[75%] rounded-2xl rounded-bl-sm bg-purple-800/70 border border-purple-600/30 px-4 py-2.5 text-purple-100 text-sm shadow-md shadow-purple-950/40 whitespace-pre-wrap break-words">
-                {msg.content}
+              <div className="max-w-[75%] flex flex-col">
+                {msg.thinking && <ThinkingPanel thinking={msg.thinking} />}
+                <div className="rounded-2xl rounded-bl-sm bg-purple-800/70 border border-purple-600/30 px-4 py-2.5 text-purple-100 text-sm shadow-md shadow-purple-950/40 whitespace-pre-wrap break-words">
+                  {msg.content}
+                </div>
               </div>
             </div>
           )
         })}
 
-        {streamingReply != null && (
+        {isStreaming && (
           <div className="flex justify-start">
-            <div className="max-w-[75%] rounded-2xl rounded-bl-sm bg-purple-800/70 border border-purple-600/30 px-4 py-2.5 text-purple-100 text-sm shadow-md shadow-purple-950/40 whitespace-pre-wrap break-words">
-              {streamingReply === '' ? (
-                <span className="flex gap-1 items-center py-0.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-bounce [animation-delay:0ms]" />
-                  <span className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-bounce [animation-delay:150ms]" />
-                  <span className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-bounce [animation-delay:300ms]" />
-                </span>
-              ) : (
-                <>
+            <div className="max-w-[75%] flex flex-col">
+              {streamingThinking !== '' && (
+                <ThinkingPanel
+                  thinking={streamingThinking}
+                  streaming={streamingContentEmpty}
+                  defaultOpen={streamingContentEmpty}
+                />
+              )}
+              {!streamingContentEmpty && (
+                <div className="rounded-2xl rounded-bl-sm bg-purple-800/70 border border-purple-600/30 px-4 py-2.5 text-purple-100 text-sm shadow-md shadow-purple-950/40 whitespace-pre-wrap break-words">
                   {streamingReply}
                   <span className="inline-block w-1.5 h-4 align-[-2px] ml-0.5 bg-purple-300 animate-pulse" />
-                </>
+                </div>
+              )}
+              {streamingContentEmpty && streamingThinking === '' && (
+                <div className="rounded-2xl rounded-bl-sm bg-purple-800/70 border border-purple-600/30 px-4 py-3 shadow-md shadow-purple-950/40">
+                  <span className="flex gap-1 items-center">
+                    <span className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-bounce [animation-delay:0ms]" />
+                    <span className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-bounce [animation-delay:150ms]" />
+                    <span className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-bounce [animation-delay:300ms]" />
+                  </span>
+                </div>
               )}
             </div>
           </div>

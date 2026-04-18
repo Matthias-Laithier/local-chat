@@ -23,6 +23,7 @@ export function listMessages(conversationId: string): Promise<Message[]> {
 export type StreamEvent =
   | { type: 'user_message'; message: Message }
   | { type: 'title'; title: string }
+  | { type: 'thinking_delta'; content: string }
   | { type: 'delta'; content: string }
   | { type: 'assistant_message'; message: Message }
   | { type: 'error'; detail: string }

@@ -17,6 +17,7 @@ class MessageOut(BaseModel):
     conversation_id: str
     role: str
     content: str
+    thinking: str | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}

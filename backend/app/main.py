@@ -1,12 +1,17 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from sqlalchemy import text
+
 from app.api import conversations as conversations_router
 from app.core.database import Base, engine
 from app.core.settings import settings
 from app.models import conversation as _models  # noqa: F401 – register ORM models
 
 Base.metadata.create_all(bind=engine)
+
+with engine.begin() as _conn:
+    _conn.execute(text("ALTER TABLE messages ADD COLUMN IF NOT EXISTS thinking TEXT"))
 
 app = FastAPI(title="Local Chat API")
 
