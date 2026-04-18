@@ -5,6 +5,7 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "duckduckgo-search>=7.0.0",
     "fastapi>=0.136.0",
     "ollama>=0.6.1",
     "psycopg[binary]>=3.3.3",

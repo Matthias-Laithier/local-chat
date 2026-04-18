@@ -14,6 +14,7 @@ from app.schemas.conversation import (
     SendMessageRequest,
 )
 from app.services.ollama_chat import stream_reply
+from app.services.web_search import search_web
 
 router = APIRouter()
 
@@ -87,14 +88,28 @@ def send_message(
     user_message_payload = MessageOut.model_validate(user_msg).model_dump(mode="json")
 
     def event_stream() -> Iterator[str]:
+        web_excerpt: str | None = None
+        web_search_meta: dict | None = None
+        if request.web_search and request.message.strip():
+            excerpt, result_count = search_web(request.message)
+            web_excerpt = excerpt
+            web_search_meta = {"result_count": result_count}
+
         yield _event({"type": "user_message", "message": user_message_payload})
         if new_title is not None:
             yield _event({"type": "title", "title": new_title})
+        if web_search_meta is not None:
+            yield _event({"type": "web_search", **web_search_meta})
 
         full_text = ""
         full_thinking = ""
         try:
-            for chunk in stream_reply(history, request.message, request.image_data_url):
+            for chunk in stream_reply(
+                history,
+                request.message,
+                request.image_data_url,
+                web_excerpt=web_excerpt,
+            ):
                 if chunk.thinking:
                     full_thinking += chunk.thinking
                     yield _event({"type": "thinking_delta", "content": chunk.thinking})

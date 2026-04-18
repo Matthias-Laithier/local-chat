@@ -34,6 +34,8 @@ export default function ChatArea({
   const [streamingReply, setStreamingReply] = useState<string | null>(null)
   const [streamingThinking, setStreamingThinking] = useState<string>('')
   const [error, setError] = useState<string | null>(null)
+  const [webSearch, setWebSearch] = useState(false)
+  const [webSearchStatus, setWebSearchStatus] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
 
@@ -44,6 +46,7 @@ export default function ChatArea({
     setLoading(false)
     setStreamingReply(null)
     setStreamingThinking('')
+    setWebSearchStatus(null)
   }, [conversation?.id])
 
   useEffect(() => {
@@ -83,6 +86,9 @@ export default function ChatArea({
     setLoading(true)
     setStreamingReply('')
     setStreamingThinking('')
+    setWebSearchStatus(
+      webSearch && text.trim() ? 'Searching the web…' : null,
+    )
 
     const optimisticUserMsg: Message = {
       id: `optimistic-${Date.now()}`,
@@ -97,40 +103,56 @@ export default function ChatArea({
     let accumulatedContent = ''
     let accumulatedThinking = ''
     try {
-      await streamMessage(conversation.id, text, imageToSend, (event) => {
-        switch (event.type) {
-          case 'user_message':
-            onMessagesChange((prev) =>
-              prev.map((m) => (m.id === optimisticUserMsg.id ? event.message : m)),
-            )
-            break
-          case 'title':
-            onConversationTitleChange(conversation.id, event.title)
-            break
-          case 'thinking_delta':
-            accumulatedThinking += event.content
-            setStreamingThinking(accumulatedThinking)
-            break
-          case 'delta':
-            accumulatedContent += event.content
-            setStreamingReply(accumulatedContent)
-            break
-          case 'assistant_message':
-            onMessagesChange((prev) => [...prev, event.message])
-            setStreamingReply(null)
-            setStreamingThinking('')
-            break
-          case 'error':
-            setError(event.detail)
-            setStreamingReply(null)
-            setStreamingThinking('')
-            break
-        }
-      })
+      await streamMessage(
+        conversation.id,
+        text,
+        imageToSend,
+        (event) => {
+          switch (event.type) {
+            case 'user_message':
+              onMessagesChange((prev) =>
+                prev.map((m) => (m.id === optimisticUserMsg.id ? event.message : m)),
+              )
+              break
+            case 'title':
+              onConversationTitleChange(conversation.id, event.title)
+              break
+            case 'web_search':
+              setWebSearchStatus(
+                event.result_count > 0
+                  ? `Web search: ${event.result_count} result${event.result_count === 1 ? '' : 's'} (DuckDuckGo)`
+                  : 'Web search returned no results (check network or try again)',
+              )
+              break
+            case 'thinking_delta':
+              accumulatedThinking += event.content
+              setStreamingThinking(accumulatedThinking)
+              break
+            case 'delta':
+              accumulatedContent += event.content
+              setStreamingReply(accumulatedContent)
+              break
+            case 'assistant_message':
+              onMessagesChange((prev) => [...prev, event.message])
+              setStreamingReply(null)
+              setStreamingThinking('')
+              setWebSearchStatus(null)
+              break
+            case 'error':
+              setError(event.detail)
+              setStreamingReply(null)
+              setStreamingThinking('')
+              setWebSearchStatus(null)
+              break
+          }
+        },
+        webSearch,
+      )
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error')
       setStreamingReply(null)
       setStreamingThinking('')
+      setWebSearchStatus(null)
     } finally {
       setLoading(false)
     }
@@ -160,7 +182,11 @@ export default function ChatArea({
       {/* Header */}
       <div className="px-6 py-4 border-b border-purple-700/50 shrink-0">
         <h2 className="text-base font-semibold text-purple-100 truncate">{conversation.title}</h2>
-        <p className="text-xs text-purple-500">Streaming via Ollama</p>
+        <p
+          className={`text-xs ${webSearchStatus ? 'text-emerald-400/95' : 'text-purple-500'}`}
+        >
+          {webSearchStatus ?? 'Streaming via Ollama'}
+        </p>
       </div>
 
       {/* Messages */}
@@ -266,7 +292,18 @@ export default function ChatArea({
       )}
 
       {/* Input bar */}
-      <div className="px-4 py-3 border-t border-purple-700/50 flex gap-2 items-center shrink-0">
+      <div className="px-4 py-3 border-t border-purple-700/50 flex flex-col gap-2 shrink-0">
+        <label className="flex items-center gap-2 text-xs text-purple-400 cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={webSearch}
+            onChange={(e) => setWebSearch(e.target.checked)}
+            disabled={loading}
+            className="rounded border-purple-500 bg-purple-900/40 text-purple-400 focus:ring-purple-500/60"
+          />
+          Search the web (DuckDuckGo)
+        </label>
+        <div className="flex gap-2 items-center">
         <input
           ref={fileInputRef}
           type="file"
@@ -310,6 +347,7 @@ export default function ChatArea({
         >
           Send
         </button>
+        </div>
       </div>
     </div>
   )

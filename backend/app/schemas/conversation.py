@@ -27,3 +27,4 @@ class MessageOut(BaseModel):
 class SendMessageRequest(BaseModel):
     message: str
     image_data_url: str | None = None
+    web_search: bool = False

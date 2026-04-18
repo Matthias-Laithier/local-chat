@@ -32,6 +32,7 @@ export function listMessages(conversationId: string): Promise<Message[]> {
 export type StreamEvent =
   | { type: 'user_message'; message: Message }
   | { type: 'title'; title: string }
+  | { type: 'web_search'; result_count: number }
   | { type: 'thinking_delta'; content: string }
   | { type: 'delta'; content: string }
   | { type: 'assistant_message'; message: Message }
@@ -42,13 +43,18 @@ export async function streamMessage(
   message: string,
   imageDataUrl: string | null,
   onEvent: (event: StreamEvent) => void,
+  webSearch = false,
 ): Promise<void> {
   const response = await fetch(
     `/api/conversations/${conversationId}/messages`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message, image_data_url: imageDataUrl }),
+      body: JSON.stringify({
+        message,
+        image_data_url: imageDataUrl,
+        web_search: webSearch,
+      }),
     },
   )
   if (!response.ok || !response.body) {

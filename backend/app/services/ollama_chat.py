@@ -6,6 +6,7 @@ from ollama import Client
 
 from app.core.settings import settings
 from app.models.conversation import Message
+from app.services.agent_context import build_agent_system_preamble
 
 _client = Client(host=settings.ollama_base_url)
 
@@ -34,8 +35,14 @@ def stream_reply(
     history: Iterable[Message],
     user_message: str,
     user_image_data_url: str | None = None,
+    *,
+    web_excerpt: str | None = None,
 ) -> Iterator[ReplyChunk]:
-    messages: list[dict[str, Any]] = [_message_payload(m) for m in history]
+    system_content = build_agent_system_preamble(web_excerpt=web_excerpt)
+    messages: list[dict[str, Any]] = [
+        {"role": "system", "content": system_content},
+        *[_message_payload(m) for m in history],
+    ]
     user_payload: dict[str, Any] = {"role": "user", "content": user_message}
     if user_image_data_url:
         user_payload["images"] = [_strip_data_url(user_image_data_url)]
