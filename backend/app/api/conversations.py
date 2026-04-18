@@ -10,10 +10,9 @@ from app.schemas.conversation import (
     SendMessageRequest,
     SendMessageResponse,
 )
+from app.services.ollama_chat import generate_reply
 
 router = APIRouter()
-
-HARDCODED_REPLY = "I am a hardcoded answer from the backend."
 
 
 @router.get("/conversations", response_model=list[ConversationOut])
@@ -48,7 +47,13 @@ def send_message(
     if conversation is None:
         raise HTTPException(status_code=404, detail="Conversation not found")
 
-    is_first_message = len(conversation.messages) == 0
+    history = list(conversation.messages)
+    is_first_message = len(history) == 0
+
+    try:
+        reply = generate_reply(history, request.message)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"LLM backend error: {exc}") from exc
 
     user_msg = Message(
         conversation_id=conversation_id,
@@ -60,7 +65,7 @@ def send_message(
     assistant_msg = Message(
         conversation_id=conversation_id,
         role="assistant",
-        content=HARDCODED_REPLY,
+        content=reply,
     )
     db.add(assistant_msg)
 
@@ -73,7 +78,7 @@ def send_message(
     db.refresh(conversation)
 
     return SendMessageResponse(
-        reply=HARDCODED_REPLY,
+        reply=reply,
         user_message=MessageOut.model_validate(user_msg),
         assistant_message=MessageOut.model_validate(assistant_msg),
     )

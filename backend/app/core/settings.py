@@ -6,6 +6,8 @@ class Settings(BaseSettings):
 
     cors_origins: list[str]
     database_url: str
+    ollama_base_url: str
+    ollama_model: str
 
 
 settings = Settings()

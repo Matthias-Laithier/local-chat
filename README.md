@@ -1,15 +1,31 @@
 # local-chat
 
-A minimal fullstack app — FastAPI backend + React frontend — that returns the current date and time from the server.
+A minimal fullstack chat app — FastAPI + React + PostgreSQL — that talks to a local [Ollama](https://ollama.com/) model. Past conversations are persisted and listed in a sidebar so you can resume them at any time.
 
 ## Requirements
 
 - [uv](https://docs.astral.sh/uv/) (Python backend)
 - [Node.js](https://nodejs.org/) + npm (frontend)
+- [Docker](https://docs.docker.com/) (PostgreSQL)
+- [Ollama](https://ollama.com/) running on `localhost:11434`
+
+## One-time model pull
+
+```bash
+ollama pull ministral-3:14b
+```
+
+Ollama must be running on the host. Requires Ollama >= 0.13.1.
 
 ## Setup
 
-### Backend
+### 1. Database
+
+```bash
+docker compose up -d postgres
+```
+
+### 2. Backend
 
 ```bash
 cd backend
@@ -17,9 +33,9 @@ cp .env.example .env
 uv run uvicorn app.main:app --reload
 ```
 
-Runs on http://localhost:8000.
+Runs on http://localhost:8000. Tables are auto-created on startup.
 
-### Frontend
+### 3. Frontend
 
 ```bash
 cd frontend
@@ -33,22 +49,22 @@ Runs on http://localhost:5173. API calls to `/api/*` are proxied to the backend.
 
 All variables are defined in `backend/.env.example`.
 
-| Variable        | Description                          | Example                          |
-|-----------------|--------------------------------------|----------------------------------|
-| `CORS_ORIGINS`  | JSON list of allowed frontend origins | `["http://localhost:5173"]`      |
+| Variable          | Description                                   | Example                                                    |
+|-------------------|-----------------------------------------------|------------------------------------------------------------|
+| `CORS_ORIGINS`    | JSON list of allowed frontend origins         | `["http://localhost:5173"]`                                |
+| `DATABASE_URL`    | PostgreSQL SQLAlchemy URL                     | `postgresql+psycopg://localchat:localchat@localhost:5432/localchat` |
+| `OLLAMA_BASE_URL` | URL of the running Ollama instance            | `http://localhost:11434`                                   |
+| `OLLAMA_MODEL`    | Ollama model tag used to generate replies     | `ministral-3:14b`                                          |
 
 ## API
 
-| Method | Path           | Description                  |
-|--------|----------------|------------------------------|
-| GET    | `/health`      | Health check                 |
-| GET    | `/api/datetime`| Returns current UTC datetime |
-
-### Example response
-
-```json
-{ "datetime": "2026-04-18T18:00:00.000000+00:00" }
-```
+| Method | Path                                      | Description                                              |
+|--------|-------------------------------------------|----------------------------------------------------------|
+| GET    | `/health`                                 | Health check                                             |
+| GET    | `/api/conversations`                      | List conversations ordered by `updated_at DESC`          |
+| POST   | `/api/conversations`                      | Create a new empty conversation                          |
+| GET    | `/api/conversations/{id}/messages`        | List all messages in a conversation                      |
+| POST   | `/api/conversations/{id}/messages`        | Send a message; backend calls Ollama and stores the reply |
 
 ## Lint & typecheck
 
@@ -59,4 +75,10 @@ uv run ruff check app/
 
 # Frontend (from frontend/)
 npm run build
+```
+
+## Teardown
+
+```bash
+docker compose down -v
 ```
