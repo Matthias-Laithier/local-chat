@@ -16,6 +16,15 @@ export function createConversation(): Promise<Conversation> {
   return request<Conversation>('/api/conversations', { method: 'POST' })
 }
 
+export async function deleteConversation(conversationId: string): Promise<void> {
+  const response = await fetch(`/api/conversations/${conversationId}`, {
+    method: 'DELETE',
+  })
+  if (!response.ok) {
+    throw new Error(`Request failed: ${response.status} ${response.statusText}`)
+  }
+}
+
 export function listMessages(conversationId: string): Promise<Message[]> {
   return request<Message[]>(`/api/conversations/${conversationId}/messages`)
 }

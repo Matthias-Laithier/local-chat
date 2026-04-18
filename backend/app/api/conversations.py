@@ -1,7 +1,7 @@
 import json
 from collections.abc import Iterator
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from fastapi.responses import StreamingResponse
 from sqlalchemy import desc
 from sqlalchemy.orm import Session
@@ -30,6 +30,16 @@ def create_conversation(db: Session = Depends(get_db)) -> Conversation:
     db.commit()
     db.refresh(conversation)
     return conversation
+
+
+@router.delete("/conversations/{conversation_id}", status_code=204)
+def delete_conversation(conversation_id: str, db: Session = Depends(get_db)) -> Response:
+    conversation = db.get(Conversation, conversation_id)
+    if conversation is None:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    db.delete(conversation)
+    db.commit()
+    return Response(status_code=204)
 
 
 @router.get("/conversations/{conversation_id}/messages", response_model=list[MessageOut])

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import {
   createConversation,
+  deleteConversation,
   listConversations,
   listMessages,
 } from './api/conversations'
@@ -58,6 +59,24 @@ export default function App() {
     [],
   )
 
+  const handleDelete = useCallback(
+    async (id: string) => {
+      try {
+        await deleteConversation(id)
+      } catch (err) {
+        console.error('Failed to delete conversation', err)
+        return
+      }
+      setConversations((prev) => prev.filter((c) => c.id !== id))
+      setActiveId((prev) => (prev === id ? null : prev))
+    },
+    [],
+  )
+
+  useEffect(() => {
+    if (activeId == null) setMessages([])
+  }, [activeId])
+
   return (
     <div className="min-h-screen bg-purple-950 flex items-center justify-center p-4">
       <div className="w-full max-w-4xl h-[85vh] flex bg-purple-900/60 border border-purple-700/50 backdrop-blur-sm rounded-2xl shadow-2xl shadow-purple-950/80 overflow-hidden">
@@ -67,6 +86,7 @@ export default function App() {
           loading={sidebarLoading}
           onSelect={(id) => void handleSelect(id)}
           onNew={() => void handleNew()}
+          onDelete={(id) => void handleDelete(id)}
         />
         <ChatArea
           conversation={activeConversation}
