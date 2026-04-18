@@ -24,9 +24,3 @@ class MessageOut(BaseModel):
 
 class SendMessageRequest(BaseModel):
     message: str
-
-
-class SendMessageResponse(BaseModel):
-    reply: str
-    user_message: MessageOut
-    assistant_message: MessageOut

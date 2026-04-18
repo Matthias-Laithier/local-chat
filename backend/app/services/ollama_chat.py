@@ -1,4 +1,4 @@
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
 
 from ollama import Client
 
@@ -8,9 +8,15 @@ from app.models.conversation import Message
 _client = Client(host=settings.ollama_base_url)
 
 
-def generate_reply(history: Iterable[Message], user_message: str) -> str:
+def stream_reply(history: Iterable[Message], user_message: str) -> Iterator[str]:
     messages = [{"role": m.role, "content": m.content} for m in history]
     messages.append({"role": "user", "content": user_message})
 
-    response = _client.chat(model=settings.ollama_model, messages=messages)
-    return response["message"]["content"]
+    for chunk in _client.chat(
+        model=settings.ollama_model,
+        messages=messages,
+        stream=True,
+    ):
+        content = chunk.get("message", {}).get("content", "")
+        if content:
+            yield content

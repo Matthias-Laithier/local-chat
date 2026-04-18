@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { sendMessage } from '../api/conversations'
+import { streamMessage } from '../api/conversations'
 import type { Conversation, Message } from '../types'
 
 interface ChatAreaProps {
@@ -17,6 +17,7 @@ export default function ChatArea({
 }: ChatAreaProps) {
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
+  const [streamingReply, setStreamingReply] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
 
@@ -24,11 +25,12 @@ export default function ChatArea({
     setInput('')
     setError(null)
     setLoading(false)
+    setStreamingReply(null)
   }, [conversation?.id])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages, loading])
+  }, [messages, streamingReply, loading])
 
   async function handleSend() {
     if (!conversation || !input.trim() || loading) return
@@ -36,15 +38,46 @@ export default function ChatArea({
     setInput('')
     setError(null)
     setLoading(true)
+    setStreamingReply('')
 
+    const optimisticUserMsg: Message = {
+      id: `optimistic-${Date.now()}`,
+      conversation_id: conversation.id,
+      role: 'user',
+      content: text,
+      created_at: new Date().toISOString(),
+    }
+    onMessagesChange((prev) => [...prev, optimisticUserMsg])
+
+    let accumulated = ''
     try {
-      const data = await sendMessage(conversation.id, text)
-      onMessagesChange((prev) => [...prev, data.user_message, data.assistant_message])
-      if (messages.length === 0) {
-        onConversationTitleChange(conversation.id, text.slice(0, 60))
-      }
+      await streamMessage(conversation.id, text, (event) => {
+        switch (event.type) {
+          case 'user_message':
+            onMessagesChange((prev) =>
+              prev.map((m) => (m.id === optimisticUserMsg.id ? event.message : m)),
+            )
+            break
+          case 'title':
+            onConversationTitleChange(conversation.id, event.title)
+            break
+          case 'delta':
+            accumulated += event.content
+            setStreamingReply(accumulated)
+            break
+          case 'assistant_message':
+            onMessagesChange((prev) => [...prev, event.message])
+            setStreamingReply(null)
+            break
+          case 'error':
+            setError(event.detail)
+            setStreamingReply(null)
+            break
+        }
+      })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error')
+      setStreamingReply(null)
     } finally {
       setLoading(false)
     }
@@ -70,12 +103,12 @@ export default function ChatArea({
       {/* Header */}
       <div className="px-6 py-4 border-b border-purple-700/50 shrink-0">
         <h2 className="text-base font-semibold text-purple-100 truncate">{conversation.title}</h2>
-        <p className="text-xs text-purple-500">Powered by a very smart hardcoded backend</p>
+        <p className="text-xs text-purple-500">Streaming via Ollama</p>
       </div>
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
-        {messages.length === 0 && !loading && (
+        {messages.length === 0 && streamingReply == null && !loading && (
           <p className="text-center text-purple-600 text-sm mt-8 select-none">
             Send a message to get started
           </p>
@@ -85,7 +118,7 @@ export default function ChatArea({
           if (msg.role === 'user') {
             return (
               <div key={msg.id} className="flex justify-end">
-                <div className="max-w-[75%] rounded-2xl rounded-br-sm bg-purple-500 px-4 py-2.5 text-white text-sm shadow-md shadow-purple-950/40">
+                <div className="max-w-[75%] rounded-2xl rounded-br-sm bg-purple-500 px-4 py-2.5 text-white text-sm shadow-md shadow-purple-950/40 whitespace-pre-wrap break-words">
                   {msg.content}
                 </div>
               </div>
@@ -93,21 +126,28 @@ export default function ChatArea({
           }
           return (
             <div key={msg.id} className="flex justify-start">
-              <div className="max-w-[75%] rounded-2xl rounded-bl-sm bg-purple-800/70 border border-purple-600/30 px-4 py-2.5 text-purple-100 text-sm shadow-md shadow-purple-950/40">
+              <div className="max-w-[75%] rounded-2xl rounded-bl-sm bg-purple-800/70 border border-purple-600/30 px-4 py-2.5 text-purple-100 text-sm shadow-md shadow-purple-950/40 whitespace-pre-wrap break-words">
                 {msg.content}
               </div>
             </div>
           )
         })}
 
-        {loading && (
+        {streamingReply != null && (
           <div className="flex justify-start">
-            <div className="rounded-2xl rounded-bl-sm bg-purple-800/70 border border-purple-600/30 px-4 py-3">
-              <span className="flex gap-1 items-center">
-                <span className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-bounce [animation-delay:0ms]" />
-                <span className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-bounce [animation-delay:150ms]" />
-                <span className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-bounce [animation-delay:300ms]" />
-              </span>
+            <div className="max-w-[75%] rounded-2xl rounded-bl-sm bg-purple-800/70 border border-purple-600/30 px-4 py-2.5 text-purple-100 text-sm shadow-md shadow-purple-950/40 whitespace-pre-wrap break-words">
+              {streamingReply === '' ? (
+                <span className="flex gap-1 items-center py-0.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-bounce [animation-delay:0ms]" />
+                  <span className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-bounce [animation-delay:150ms]" />
+                  <span className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-bounce [animation-delay:300ms]" />
+                </span>
+              ) : (
+                <>
+                  {streamingReply}
+                  <span className="inline-block w-1.5 h-4 align-[-2px] ml-0.5 bg-purple-300 animate-pulse" />
+                </>
+              )}
             </div>
           </div>
         )}

@@ -20,17 +20,19 @@ export function listMessages(conversationId: string): Promise<Message[]> {
   return request<Message[]>(`/api/conversations/${conversationId}/messages`)
 }
 
-export interface SendMessageResponse {
-  reply: string
-  user_message: Message
-  assistant_message: Message
-}
+export type StreamEvent =
+  | { type: 'user_message'; message: Message }
+  | { type: 'title'; title: string }
+  | { type: 'delta'; content: string }
+  | { type: 'assistant_message'; message: Message }
+  | { type: 'error'; detail: string }
 
-export function sendMessage(
+export async function streamMessage(
   conversationId: string,
   message: string,
-): Promise<SendMessageResponse> {
-  return request<SendMessageResponse>(
+  onEvent: (event: StreamEvent) => void,
+): Promise<void> {
+  const response = await fetch(
     `/api/conversations/${conversationId}/messages`,
     {
       method: 'POST',
@@ -38,4 +40,29 @@ export function sendMessage(
       body: JSON.stringify({ message }),
     },
   )
+  if (!response.ok || !response.body) {
+    throw new Error(`Request failed: ${response.status} ${response.statusText}`)
+  }
+
+  const reader = response.body
+    .pipeThrough(new TextDecoderStream())
+    .getReader()
+
+  let buffer = ''
+  while (true) {
+    const { value, done } = await reader.read()
+    if (done) break
+    buffer += value
+    const lines = buffer.split('\n')
+    buffer = lines.pop() ?? ''
+    for (const line of lines) {
+      const trimmed = line.trim()
+      if (trimmed === '') continue
+      onEvent(JSON.parse(trimmed) as StreamEvent)
+    }
+  }
+  const tail = buffer.trim()
+  if (tail !== '') {
+    onEvent(JSON.parse(tail) as StreamEvent)
+  }
 }

@@ -1,4 +1,8 @@
+import json
+from collections.abc import Iterator
+
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 from sqlalchemy import desc
 from sqlalchemy.orm import Session
 
@@ -8,9 +12,8 @@ from app.schemas.conversation import (
     ConversationOut,
     MessageOut,
     SendMessageRequest,
-    SendMessageResponse,
 )
-from app.services.ollama_chat import generate_reply
+from app.services.ollama_chat import stream_reply
 
 router = APIRouter()
 
@@ -37,12 +40,16 @@ def list_messages(conversation_id: str, db: Session = Depends(get_db)) -> list[M
     return conversation.messages
 
 
-@router.post("/conversations/{conversation_id}/messages", response_model=SendMessageResponse)
+def _event(payload: dict) -> str:
+    return json.dumps(payload) + "\n"
+
+
+@router.post("/conversations/{conversation_id}/messages")
 def send_message(
     conversation_id: str,
     request: SendMessageRequest,
     db: Session = Depends(get_db),
-) -> SendMessageResponse:
+) -> StreamingResponse:
     conversation = db.get(Conversation, conversation_id)
     if conversation is None:
         raise HTTPException(status_code=404, detail="Conversation not found")
@@ -50,35 +57,49 @@ def send_message(
     history = list(conversation.messages)
     is_first_message = len(history) == 0
 
-    try:
-        reply = generate_reply(history, request.message)
-    except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"LLM backend error: {exc}") from exc
-
     user_msg = Message(
         conversation_id=conversation_id,
         role="user",
         content=request.message,
     )
     db.add(user_msg)
-
-    assistant_msg = Message(
-        conversation_id=conversation_id,
-        role="assistant",
-        content=reply,
-    )
-    db.add(assistant_msg)
-
     if is_first_message:
         conversation.title = request.message[:60]
-
     db.commit()
     db.refresh(user_msg)
-    db.refresh(assistant_msg)
     db.refresh(conversation)
 
-    return SendMessageResponse(
-        reply=reply,
-        user_message=MessageOut.model_validate(user_msg),
-        assistant_message=MessageOut.model_validate(assistant_msg),
-    )
+    new_title = conversation.title if is_first_message else None
+    user_message_payload = MessageOut.model_validate(user_msg).model_dump(mode="json")
+
+    def event_stream() -> Iterator[str]:
+        yield _event({"type": "user_message", "message": user_message_payload})
+        if new_title is not None:
+            yield _event({"type": "title", "title": new_title})
+
+        full_text = ""
+        try:
+            for delta in stream_reply(history, request.message):
+                full_text += delta
+                yield _event({"type": "delta", "content": delta})
+        except Exception as exc:
+            yield _event({"type": "error", "detail": f"LLM backend error: {exc}"})
+            return
+
+        assistant_msg = Message(
+            conversation_id=conversation_id,
+            role="assistant",
+            content=full_text,
+        )
+        db.add(assistant_msg)
+        db.commit()
+        db.refresh(assistant_msg)
+
+        yield _event(
+            {
+                "type": "assistant_message",
+                "message": MessageOut.model_validate(assistant_msg).model_dump(mode="json"),
+            }
+        )
+
+    return StreamingResponse(event_stream(), media_type="application/x-ndjson")
