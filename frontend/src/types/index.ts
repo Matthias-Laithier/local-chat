@@ -11,5 +11,6 @@ export interface Message {
   role: 'user' | 'assistant'
   content: string
   thinking?: string | null
+  image_data_url?: string | null
   created_at: string
 }

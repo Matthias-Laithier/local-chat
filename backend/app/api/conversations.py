@@ -61,10 +61,14 @@ def send_message(
         conversation_id=conversation_id,
         role="user",
         content=request.message,
+        image_data_url=request.image_data_url,
     )
     db.add(user_msg)
     if is_first_message:
-        conversation.title = request.message[:60]
+        if request.message.strip():
+            conversation.title = request.message[:60]
+        elif request.image_data_url:
+            conversation.title = "Image"
     db.commit()
     db.refresh(user_msg)
     db.refresh(conversation)
@@ -80,7 +84,7 @@ def send_message(
         full_text = ""
         full_thinking = ""
         try:
-            for chunk in stream_reply(history, request.message):
+            for chunk in stream_reply(history, request.message, request.image_data_url):
                 if chunk.thinking:
                     full_thinking += chunk.thinking
                     yield _event({"type": "thinking_delta", "content": chunk.thinking})

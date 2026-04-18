@@ -31,6 +31,7 @@ export type StreamEvent =
 export async function streamMessage(
   conversationId: string,
   message: string,
+  imageDataUrl: string | null,
   onEvent: (event: StreamEvent) => void,
 ): Promise<void> {
   const response = await fetch(
@@ -38,7 +39,7 @@ export async function streamMessage(
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message }),
+      body: JSON.stringify({ message, image_data_url: imageDataUrl }),
     },
   )
   if (!response.ok || !response.body) {

@@ -12,6 +12,7 @@ Base.metadata.create_all(bind=engine)
 
 with engine.begin() as _conn:
     _conn.execute(text("ALTER TABLE messages ADD COLUMN IF NOT EXISTS thinking TEXT"))
+    _conn.execute(text("ALTER TABLE messages ADD COLUMN IF NOT EXISTS image_data_url TEXT"))
 
 app = FastAPI(title="Local Chat API")
 

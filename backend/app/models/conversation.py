@@ -32,6 +32,7 @@ class Message(Base):
     role: Mapped[str] = mapped_column(String(16))
     content: Mapped[str] = mapped_column(Text)
     thinking: Mapped[str | None] = mapped_column(Text, nullable=True)
+    image_data_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
     conversation: Mapped["Conversation"] = relationship("Conversation", back_populates="messages")

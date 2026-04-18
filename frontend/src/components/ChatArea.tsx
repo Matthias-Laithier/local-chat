@@ -10,6 +10,17 @@ interface ChatAreaProps {
   onConversationTitleChange: (id: string, title: string) => void
 }
 
+const MAX_IMAGE_BYTES = 8 * 1024 * 1024
+
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result as string)
+    reader.onerror = () => reject(reader.error ?? new Error('File read failed'))
+    reader.readAsDataURL(file)
+  })
+}
+
 export default function ChatArea({
   conversation,
   messages,
@@ -17,14 +28,17 @@ export default function ChatArea({
   onConversationTitleChange,
 }: ChatAreaProps) {
   const [input, setInput] = useState('')
+  const [pendingImage, setPendingImage] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [streamingReply, setStreamingReply] = useState<string | null>(null)
   const [streamingThinking, setStreamingThinking] = useState<string>('')
   const [error, setError] = useState<string | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     setInput('')
+    setPendingImage(null)
     setError(null)
     setLoading(false)
     setStreamingReply(null)
@@ -35,10 +49,35 @@ export default function ChatArea({
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, streamingReply, streamingThinking, loading])
 
+  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    if (!file.type.startsWith('image/')) {
+      setError('Only image files are supported')
+      return
+    }
+    if (file.size > MAX_IMAGE_BYTES) {
+      setError(`Image too large (max ${MAX_IMAGE_BYTES / 1024 / 1024} MB)`)
+      return
+    }
+    setError(null)
+    try {
+      const dataUrl = await readFileAsDataUrl(file)
+      setPendingImage(dataUrl)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to read image')
+    }
+  }
+
   async function handleSend() {
-    if (!conversation || !input.trim() || loading) return
+    if (!conversation || loading) return
     const text = input.trim()
+    if (!text && !pendingImage) return
+
+    const imageToSend = pendingImage
     setInput('')
+    setPendingImage(null)
     setError(null)
     setLoading(true)
     setStreamingReply('')
@@ -49,6 +88,7 @@ export default function ChatArea({
       conversation_id: conversation.id,
       role: 'user',
       content: text,
+      image_data_url: imageToSend,
       created_at: new Date().toISOString(),
     }
     onMessagesChange((prev) => [...prev, optimisticUserMsg])
@@ -56,7 +96,7 @@ export default function ChatArea({
     let accumulatedContent = ''
     let accumulatedThinking = ''
     try {
-      await streamMessage(conversation.id, text, (event) => {
+      await streamMessage(conversation.id, text, imageToSend, (event) => {
         switch (event.type) {
           case 'user_message':
             onMessagesChange((prev) =>
@@ -112,6 +152,7 @@ export default function ChatArea({
 
   const isStreaming = streamingReply != null
   const streamingContentEmpty = streamingReply === ''
+  const canSend = !loading && (input.trim().length > 0 || pendingImage != null)
 
   return (
     <div className="flex-1 flex flex-col min-w-0">
@@ -133,8 +174,19 @@ export default function ChatArea({
           if (msg.role === 'user') {
             return (
               <div key={msg.id} className="flex justify-end">
-                <div className="max-w-[75%] rounded-2xl rounded-br-sm bg-purple-500 px-4 py-2.5 text-white text-sm shadow-md shadow-purple-950/40 whitespace-pre-wrap break-words">
-                  {msg.content}
+                <div className="max-w-[75%] flex flex-col items-end gap-1.5">
+                  {msg.image_data_url && (
+                    <img
+                      src={msg.image_data_url}
+                      alt="attachment"
+                      className="max-h-64 rounded-xl border border-purple-400/40 shadow-md shadow-purple-950/40 object-contain"
+                    />
+                  )}
+                  {msg.content && (
+                    <div className="rounded-2xl rounded-br-sm bg-purple-500 px-4 py-2.5 text-white text-sm shadow-md shadow-purple-950/40 whitespace-pre-wrap break-words">
+                      {msg.content}
+                    </div>
+                  )}
                 </div>
               </div>
             )
@@ -191,20 +243,68 @@ export default function ChatArea({
         <div ref={bottomRef} />
       </div>
 
+      {/* Pending image preview */}
+      {pendingImage && (
+        <div className="px-4 pt-3 shrink-0">
+          <div className="inline-flex items-center gap-2 rounded-xl bg-purple-800/60 border border-purple-600/40 p-1.5 pr-3">
+            <img
+              src={pendingImage}
+              alt="pending attachment"
+              className="h-14 w-14 rounded-lg object-cover"
+            />
+            <span className="text-xs text-purple-300">Image attached</span>
+            <button
+              onClick={() => setPendingImage(null)}
+              className="text-purple-300 hover:text-purple-100 rounded-full w-6 h-6 flex items-center justify-center hover:bg-purple-700/50 transition cursor-pointer"
+              aria-label="Remove image"
+            >
+              ×
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Input bar */}
       <div className="px-4 py-3 border-t border-purple-700/50 flex gap-2 items-center shrink-0">
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          onChange={(e) => void handleFileChange(e)}
+          className="hidden"
+        />
+        <button
+          onClick={() => fileInputRef.current?.click()}
+          disabled={loading}
+          title="Attach image"
+          aria-label="Attach image"
+          className="shrink-0 rounded-xl bg-purple-800/60 border border-purple-600/40 hover:bg-purple-700/60 hover:border-purple-500/60 disabled:opacity-40 disabled:cursor-not-allowed w-10 h-10 flex items-center justify-center text-purple-300 hover:text-purple-100 transition cursor-pointer"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className="w-4 h-4"
+          >
+            <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 17.98 8.78l-8.58 8.57a2 2 0 0 1-2.83-2.83l7.91-7.91" />
+          </svg>
+        </button>
         <input
           type="text"
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
           disabled={loading}
-          placeholder="Type a message…"
+          placeholder={pendingImage ? 'Add a message (optional)…' : 'Type a message…'}
           className="flex-1 rounded-xl bg-purple-800/60 border border-purple-600/40 px-4 py-2.5 text-purple-100 placeholder-purple-500 text-sm outline-none focus:ring-2 focus:ring-purple-500/60 disabled:opacity-50 transition"
         />
         <button
           onClick={() => void handleSend()}
-          disabled={loading || !input.trim()}
+          disabled={!canSend}
           className="rounded-xl bg-purple-500 hover:bg-purple-400 active:bg-purple-600 disabled:opacity-40 disabled:cursor-not-allowed px-4 py-2.5 text-white font-semibold text-sm transition-colors duration-150 shadow-lg shadow-purple-950/40 cursor-pointer"
         >
           Send
